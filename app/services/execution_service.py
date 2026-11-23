@@ -1,5 +1,5 @@
+from datetime import datetime, timedelta
 
-from datetime import datetime
 
 from app.services.data_service import (
     load_alerts,
@@ -60,8 +60,9 @@ def execute_email_notification(plugin_data: dict):
     }
 
 
+
 def execute_performance_report(input_data: dict):
-    """Generate a performance report with available reporting-period metadata."""
+    """Generate a performance report with zone and time filtering."""
 
     records = load_performance_stats()
     metadata = load_performance_metadata()
@@ -69,29 +70,66 @@ def execute_performance_report(input_data: dict):
     zone = input_data.get("zone")
     requested_hours = input_data.get("hours")
 
+    # Filter by zone
     if zone:
+        requested_zone = zone.strip().casefold()
         records = [
             record for record in records
-            if record.get("site_zone", "").casefold() == zone.casefold()
+            if (record.get("site_zone") or "").strip().casefold()
+            == requested_zone
         ]
 
     report_date = metadata.get("report_date") or {}
     report_start = report_date.get("start")
     report_end = report_date.get("end")
 
+    filtered_start = report_start
+    filtered_end = report_end
+    time_filter_applied = False
+
+    # Filter records using their timestamps
+    if requested_hours:
+        if not report_end:
+            raise ValueError(
+                "Cannot apply time filter: reporting end time is missing."
+            )
+
+        end_time = datetime.fromisoformat(report_end)
+        start_time = end_time - timedelta(hours=float(requested_hours))
+
+        filtered_start = start_time.isoformat()
+        filtered_end = end_time.isoformat()
+
+        timestamped_records = []
+
+        for record in records:
+            timestamp = record.get("timestamp")
+
+            if not timestamp:
+                continue
+
+            record_time = datetime.fromisoformat(timestamp)
+
+            if start_time <= record_time <= end_time:
+                timestamped_records.append(record)
+
+        records = timestamped_records
+        time_filter_applied = True
+
     if not records:
         return {
             "workflow_id": "WF004",
             "workflow_name": "Performance Report",
-            "zone": zone,
+            "zone": zone or "All zones",
             "total_records": 0,
+            "average_performance_score": None,
             "reporting_period": {
-                "start": report_start,
-                "end": report_end,
+                "start": filtered_start,
+                "end": filtered_end,
             },
             "requested_hours": requested_hours,
-            "time_filter_applied": False,
-            "message": "No performance records found for the requested zone.",
+            "time_filter_applied": time_filter_applied,
+            "message": "No performance records found for the requested zone and time period.",
             "records": [],
         }
 
@@ -111,19 +149,19 @@ def execute_performance_report(input_data: dict):
         "workflow_name": "Performance Report",
         "zone": zone or "All zones",
         "total_records": len(records),
-        "average_performance_score": round(average_score, 2)
-        if average_score is not None else None,
+        "average_performance_score": (
+            round(average_score, 2)
+            if average_score is not None else None
+        ),
         "reporting_period": {
-            "start": report_start,
-            "end": report_end,
+            "start": filtered_start,
+            "end": filtered_end,
         },
         "requested_hours": requested_hours,
-        "time_filter_applied": False,
+        "time_filter_applied": time_filter_applied,
         "time_filter_note": (
-            "The requested duration was extracted, but individual "
-            "performance records do not contain timestamps. "
-            "Records are filtered by zone only, not by time."
-            if requested_hours
+            "Records filtered by zone and timestamp."
+            if time_filter_applied
             else "No time-based filtering was requested."
         ),
         "records": records,
