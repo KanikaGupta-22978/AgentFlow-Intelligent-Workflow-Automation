@@ -1,7 +1,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-
+from app.database.init_db import initialize_database
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -21,10 +21,9 @@ STATIC_DIR = FRONTEND_DIR / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start scheduler and restore persistent jobs on application startup
+    initialize_database()
     start_scheduler()
     yield
-    # Stop scheduler cleanly when application shuts down
     stop_scheduler()
 
 
