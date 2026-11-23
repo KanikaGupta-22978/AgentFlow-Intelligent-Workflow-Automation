@@ -50,9 +50,13 @@ def get_available_zones() -> list[str]:
 
 
 def get_performance_by_zone(zone: str) -> list[dict[str, Any]]:
+    if not zone or not zone.strip():
+        return []
+
+    requested_zone = zone.strip().casefold()
     records = load_performance_stats()
 
     return [
         record for record in records
-        if record.get("site_zone", "").casefold() == zone.casefold()
+        if (record.get("site_zone") or "").strip().casefold() == requested_zone
     ]
