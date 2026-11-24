@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -250,7 +249,7 @@
             <div class="section-heading">
                 <div>
                     <h2>Scheduler Management</h2>
-                    <p>Control scheduled workflow execution.</p>
+                    <p>Create, manage and monitor scheduled workflow execution.</p>
                 </div>
                 <span class="subtle-tag">AUTOMATION</span>
             </div>
@@ -259,6 +258,70 @@
                 <button id="startSchedulerBtn" class="execute-button">Start scheduler</button>
                 <button id="stopSchedulerBtn" class="secondary">Stop scheduler</button>
                 <button id="refreshJobsBtn" class="secondary">↻ Refresh jobs</button>
+            </div>
+
+            <div class="scheduler-form" style="margin-top: 24px;">
+                <h3>Create a Scheduled Workflow</h3>
+
+                <form id="scheduleForm">
+                    <div class="form-group">
+                        <label for="scheduleWorkflow">Select Workflow</label>
+                        <select id="scheduleWorkflow" required>
+                            <option value="WF001">WF001 - Daily Alert Summary</option>
+                            <option value="WF004">WF004 - Performance Report</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scheduleType">Schedule Type</label>
+                        <select id="scheduleType" required>
+                            <option value="interval">Every X Minutes</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="once">One Time</option>
+                        </select>
+                    </div>
+
+                    <div id="intervalFields" class="form-group">
+                        <label for="scheduleMinutes">Repeat Every (Minutes)</label>
+                        <input type="number" id="scheduleMinutes" min="1" value="30" required>
+                    </div>
+
+                    <div id="timeFields" class="form-group" hidden>
+                        <label for="scheduleTime">Execution Time (IST)</label>
+                        <input type="time" id="scheduleTime" value="09:00">
+                    </div>
+
+                    <div id="weeklyFields" class="form-group" hidden>
+                        <label for="scheduleDay">Day of the Week</label>
+                        <select id="scheduleDay">
+                            <option value="mon">Monday</option>
+                            <option value="tue">Tuesday</option>
+                            <option value="wed">Wednesday</option>
+                            <option value="thu">Thursday</option>
+                            <option value="fri">Friday</option>
+                            <option value="sat">Saturday</option>
+                            <option value="sun">Sunday</option>
+                        </select>
+                    </div>
+
+                    <div id="monthlyFields" class="form-group" hidden>
+                        <label for="scheduleMonthDay">Day of the Month</label>
+                        <input type="number" id="scheduleMonthDay" min="1" max="31" value="1">
+                    </div>
+
+                    <div id="onceFields" class="form-group" hidden>
+                        <label for="scheduleDateTime">Execution Date and Time (IST)</label>
+                        <input type="datetime-local" id="scheduleDateTime">
+                    </div>
+
+                    <button type="submit" id="createScheduleBtn" class="execute-button">
+                        Create Schedule
+                    </button>
+                </form>
+
+                <p id="scheduleMessage" role="status" aria-live="polite"></p>
             </div>
 
             <div class="result-heading">SCHEDULED JOBS</div>
@@ -307,12 +370,8 @@
             <div class="history-pagination">
                 <span id="historyPageInfo">Page 1</span>
                 <div class="pagination-actions">
-                    <button id="historyPrevBtn" class="secondary" disabled>
-                        ← Previous
-                    </button>
-                    <button id="historyNextBtn" class="secondary">
-                        Next →
-                    </button>
+                    <button id="historyPrevBtn" class="secondary" disabled>← Previous</button>
+                    <button id="historyNextBtn" class="secondary">Next →</button>
                 </div>
             </div>
 
@@ -322,9 +381,7 @@
                         <h2>Execution Details</h2>
                         <p id="executionDetailsSubtitle">Selected execution information</p>
                     </div>
-                    <button id="closeExecutionDetailsBtn" class="secondary">
-                        Close
-                    </button>
+                    <button id="closeExecutionDetailsBtn" class="secondary">Close</button>
                 </div>
 
                 <div id="executionDetailsContent">
@@ -341,6 +398,6 @@
     </main>
 </div>
 
-<script src="/static/script.js?v=agentflow3"></script>
+<script src="/static/script.js?v=agentflow4"></script>
 </body>
 </html>

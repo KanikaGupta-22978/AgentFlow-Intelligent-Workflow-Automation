@@ -1,4 +1,3 @@
-
 const API_BASE = "";
 let executionChart = null;
 let workflowChart = null;
@@ -338,7 +337,7 @@ function updatePaginationControls() {
 
     if (pageInfo) {
         pageInfo.textContent =
-            `Page ${currentPage} of ${totalPages} ┬╖ ${totalExecutions} executions`;
+            `Page ${currentPage} of ${totalPages} · ${totalExecutions} executions`;
     }
 
     if (previousButton) {
@@ -861,14 +860,9 @@ async function executeNaturalLanguage() {
 
     } finally {
         button.disabled = false;
-        button.textContent = "Γ£│ Execute workflow";
+        button.textContent = "✳ Execute workflow";
     }
 }
-
-// --------------------------------------------------
-// WORKFLOW INPUT MODAL
-// --------------------------------------------------
-
 function createWorkflowModal(workflowId) {
     const existing = document.getElementById("workflowModal");
 
@@ -967,7 +961,7 @@ function createWorkflowModal(workflowId) {
     const closeButton = document.createElement("button");
     closeButton.type = "button";
     closeButton.className = "modal-close";
-    closeButton.textContent = "├ù";
+    closeButton.textContent = "×";
 
     const form = document.createElement("form");
     form.id = "workflowInputForm";
@@ -1121,7 +1115,7 @@ async function executePredefinedWorkflow(workflowId, inputData = {}) {
     } finally {
         if (button) {
             button.disabled = false;
-            button.innerHTML = "Run workflow <span>ΓåÆ</span>";
+            button.innerHTML = "Run workflow <span>→</span>";
         }
     }
 }
@@ -1159,7 +1153,7 @@ function renderDynamicWorkflows(workflows) {
 
         const idBadge = document.createElement("span");
         idBadge.className = "workflow-code";
-        idBadge.textContent = `DYNAMIC ┬╖ #${workflow.workflow_id}`;
+        idBadge.textContent = `DYNAMIC · #${workflow.workflow_id}`;
 
         const stateBadge = document.createElement("span");
         stateBadge.className = `dynamic-state ${String(workflow.status || "active").toLowerCase()}`;
@@ -1205,7 +1199,7 @@ function renderDynamicWorkflows(workflows) {
                 const action = step.action || "unknown action";
                 const label = step.description || action.replaceAll("_", " ");
 
-                item.textContent = `${index + 1}. ${label} ┬╖ ${action}`;
+                item.textContent = `${index + 1}. ${label} · ${action}`;
 
                 if (step.condition) {
                     const condition = document.createElement("small");
@@ -1224,7 +1218,7 @@ function renderDynamicWorkflows(workflows) {
         const execute = document.createElement("button");
         execute.type = "button";
         execute.className = "dynamic-execute-button";
-        execute.textContent = "Γû╢ Execute workflow";
+        execute.textContent = "▶ Execute workflow";
         execute.disabled =
             String(workflow.status || "active").toLowerCase() !== "active";
 
@@ -1296,11 +1290,10 @@ async function executeDynamicWorkflow(workflowId, button) {
     } finally {
         if (button && button.isConnected) {
             button.disabled = false;
-            button.textContent = "Γû╢ Execute workflow";
+            button.textContent = "▶ Execute workflow";
         }
     }
 }
-
 // --------------------------------------------------
 // SCHEDULER DISPLAY
 // --------------------------------------------------
@@ -1334,8 +1327,8 @@ function formatSchedule(job) {
     }
 
     if (type === "daily") return "Daily at 9:00 AM";
-    if (type === "weekly") return "Weekly ┬╖ Monday at 10:00 AM";
-    if (type === "monthly") return "Monthly ┬╖ 1st day at 9:00 AM";
+    if (type === "weekly") return "Weekly · Monday at 10:00 AM";
+    if (type === "monthly") return "Monthly · 1st day at 9:00 AM";
     if (type === "one_time") return "One-time execution";
 
     return trigger || type || "Schedule not specified";
@@ -1358,158 +1351,80 @@ function renderScheduledJobs(data) {
     if (!container) return;
 
     container.innerHTML = "";
-    container.style.whiteSpace = "normal";
-    container.style.display = "block";
-    container.style.padding = "16px";
 
-    const running = Boolean(data.scheduler_running);
-    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const jobs = data.jobs || [];
+    const schedulerRunning = data.running ?? data.scheduler_running ?? false;
 
     const status = document.createElement("div");
+    status.className = "scheduler-status";
 
-    status.style.cssText = `
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 18px;
-        padding: 14px 16px;
-        border-radius: 12px;
-        background: ${running ? "#e8f8f2" : "#fff1f2"};
-        color: ${running ? "#087f5b" : "#be123c"};
-        font-weight: 600;
-    `;
+    const statusText = document.createElement("strong");
+    statusText.textContent = schedulerRunning
+        ? "Scheduler is running"
+        : "Scheduler is stopped";
 
-    const statusText = document.createElement("span");
-    statusText.textContent = running
-        ? "ΓùÅ Scheduler running"
-        : "ΓùÅ Scheduler stopped";
+    const count = document.createElement("span");
+    count.textContent = `${jobs.length} scheduled job${jobs.length === 1 ? "" : "s"}`;
 
-    const jobCount = document.createElement("span");
-    jobCount.textContent =
-        `${data.total_scheduled_jobs ?? jobs.length} scheduled jobs`;
-
-    status.append(statusText, jobCount);
+    status.append(statusText, count);
     container.appendChild(status);
 
-    if (jobs.length === 0) {
+    if (!jobs.length) {
         const empty = document.createElement("p");
-        empty.textContent = "No scheduled jobs are currently registered.";
-        empty.style.color = "#64748b";
+        empty.textContent = "No scheduled jobs found. Create a schedule above.";
         container.appendChild(empty);
         return;
     }
 
     const grid = document.createElement("div");
-
-    grid.style.cssText = `
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 14px;
-    `;
+    grid.className = "scheduled-jobs-grid";
 
     jobs.forEach(job => {
         const card = document.createElement("article");
-
-        card.style.cssText = `
-            min-width: 0;
-            padding: 17px;
-            border: 1px solid #e5e9f2;
-            border-radius: 13px;
-            background: #ffffff;
-            box-shadow: 0 2px 8px rgba(20, 35, 70, 0.04);
-        `;
-
-        const workflowId = job.workflow_id || "Unknown";
+        card.className = "scheduled-job-card";
 
         const badge = document.createElement("span");
-        badge.textContent = workflowId;
-        badge.style.cssText = `
-            display: inline-block;
-            margin-bottom: 12px;
-            padding: 5px 9px;
-            border-radius: 7px;
-            background: #f0edff;
-            color: #6554d9;
-            font-size: 11px;
-            font-weight: 700;
-        `;
+        badge.className = "workflow-code";
+        badge.textContent = job.workflow_id || "Workflow";
 
         const title = document.createElement("h3");
-        title.textContent = getScheduledWorkflowLabel(workflowId);
-        title.style.cssText = `
-            margin: 0 0 7px;
-            font-size: 15px;
-            color: #17233d;
-        `;
+        title.textContent = getScheduledWorkflowLabel(job.workflow_id);
 
         const jobId = document.createElement("p");
-        jobId.textContent = job.job_id || "Unnamed job";
-        jobId.style.cssText = `
-            margin: 0 0 14px;
-            font-size: 12px;
-            color: #7b8498;
-            overflow-wrap: anywhere;
-        `;
-
-        const divider = document.createElement("div");
-        divider.style.cssText = `
-            height: 1px;
-            margin: 0 0 13px;
-            background: #edf0f5;
-        `;
+        jobId.textContent = `Job ID: ${job.id || job.job_id || "-"}`;
 
         const scheduleLabel = document.createElement("span");
         scheduleLabel.textContent = "SCHEDULE";
-        scheduleLabel.style.cssText = `
-            display: block;
-            margin-bottom: 5px;
-            color: #8a93a6;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-        `;
 
         const schedule = document.createElement("p");
         schedule.textContent = formatSchedule(job);
-        schedule.style.cssText = `
-            margin: 0 0 13px;
-            color: #5144bd;
-            font-size: 13px;
-            font-weight: 600;
-        `;
 
         const nextLabel = document.createElement("span");
         nextLabel.textContent = "NEXT EXECUTION";
-        nextLabel.style.cssText = `
-            display: block;
-            margin-bottom: 5px;
-            color: #8a93a6;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-        `;
 
         const next = document.createElement("p");
         next.textContent = formatDate(job.next_run_time);
-        next.style.cssText = `
-            margin: 0;
-            color: #64748b;
-            font-size: 12px;
-            line-height: 1.5;
-            overflow-wrap: anywhere;
-        `;
+
+        const cancelButton = document.createElement("button");
+        cancelButton.type = "button";
+        cancelButton.className = "secondary cancel-schedule-button";
+        cancelButton.textContent = "Cancel schedule";
+
+        const jobIdValue = job.id || job.job_id;
+
+        cancelButton.addEventListener("click", () => {
+            cancelScheduledJob(jobIdValue, cancelButton);
+        });
 
         card.append(
             badge,
             title,
             jobId,
-            divider,
             scheduleLabel,
             schedule,
             nextLabel,
-            next
+            next,
+            cancelButton
         );
 
         grid.appendChild(card);
@@ -1557,7 +1472,8 @@ async function startScheduler() {
         const container = document.getElementById("schedulerResult");
 
         if (container) {
-            container.textContent = `Unable to start scheduler: ${error.message}`;
+            container.textContent =
+                `Unable to start scheduler: ${error.message}`;
         }
 
     } finally {
@@ -1578,7 +1494,8 @@ async function stopScheduler() {
         const container = document.getElementById("schedulerResult");
 
         if (container) {
-            container.textContent = `Unable to stop scheduler: ${error.message}`;
+            container.textContent =
+                `Unable to stop scheduler: ${error.message}`;
         }
 
     } finally {
@@ -1591,6 +1508,220 @@ async function loadScheduledJobs() {
         await refreshSchedulerStatus();
     } catch (error) {
         console.error("Scheduled jobs error:", error);
+    }
+}
+
+// --------------------------------------------------
+// SCHEDULER FORM
+// --------------------------------------------------
+
+function updateScheduleFields() {
+    const type = document.getElementById("scheduleType").value;
+
+    const fields = {
+        interval: document.getElementById("intervalFields"),
+        daily: document.getElementById("timeFields"),
+        weekly: document.getElementById("weeklyFields"),
+        monthly: document.getElementById("monthlyFields"),
+        once: document.getElementById("onceFields")
+    };
+
+    Object.entries(fields).forEach(([key, element]) => {
+        if (!element) return;
+
+        const visible = key === type;
+        element.hidden = !visible;
+
+        element.querySelectorAll("input, select").forEach(input => {
+            input.disabled = !visible;
+            input.required = visible;
+        });
+    });
+}
+
+async function createScheduledWorkflow(event) {
+    event.preventDefault();
+
+    const button = document.getElementById("createScheduleBtn");
+    const message = document.getElementById("scheduleMessage");
+
+    const workflowId =
+        document.getElementById("scheduleWorkflow").value;
+
+    const scheduleType =
+        document.getElementById("scheduleType").value;
+
+    let endpoint = "";
+    let payload = {};
+
+    if (scheduleType === "interval") {
+        const minutes = Number(
+            document.getElementById("scheduleMinutes").value
+        );
+
+        if (!Number.isInteger(minutes) || minutes < 1) {
+            message.textContent = "Enter a valid interval of at least one minute.";
+            return;
+        }
+
+        endpoint = "/scheduler/schedule";
+        payload = {
+            workflow_id: workflowId,
+            interval_minutes: minutes
+        };
+
+    } else if (scheduleType === "daily") {
+        const time = document.getElementById("scheduleTime").value;
+
+        if (!time) {
+            message.textContent = "Select a daily execution time.";
+            return;
+        }
+
+        endpoint = "/scheduler/daily";
+        payload = {
+            workflow_id: workflowId,
+            time
+        };
+
+    } else if (scheduleType === "weekly") {
+        const time = document.getElementById("scheduleTime").value;
+        const day = document.getElementById("scheduleDay").value;
+
+        if (!time || !day) {
+            message.textContent = "Select a weekday and execution time.";
+            return;
+        }
+
+        endpoint = "/scheduler/weekly";
+        payload = {
+            workflow_id: workflowId,
+            day,
+            time
+        };
+
+    } else if (scheduleType === "monthly") {
+        const time = document.getElementById("scheduleTime").value;
+        const day = Number(
+            document.getElementById("scheduleMonthDay").value
+        );
+
+        if (!time || !Number.isInteger(day) || day < 1 || day > 31) {
+            message.textContent =
+                "Select a valid time and a day between 1 and 31.";
+            return;
+        }
+
+        endpoint = "/scheduler/monthly";
+        payload = {
+            workflow_id: workflowId,
+            day,
+            time
+        };
+
+    } else if (scheduleType === "once") {
+        const dateTime =
+            document.getElementById("scheduleDateTime").value;
+
+        if (!dateTime) {
+            message.textContent = "Select a date and time.";
+            return;
+        }
+
+        const selectedDate = new Date(dateTime);
+
+        if (Number.isNaN(selectedDate.getTime()) ||
+            selectedDate <= new Date()) {
+            message.textContent = "Choose a future date and time.";
+            return;
+        }
+
+        endpoint = "/scheduler/once";
+        payload = {
+            workflow_id: workflowId,
+            run_date: `${dateTime}:00+05:30`
+        };
+    }
+
+    button.disabled = true;
+    button.textContent = "Creating...";
+    message.textContent = "Starting scheduler and creating your schedule...";
+
+    try {
+        await apiRequest("/scheduler/start", "POST");
+
+        const result = await apiRequest(
+            endpoint,
+            "POST",
+            payload
+        );
+
+        message.textContent =
+            result.message || "Schedule created successfully.";
+
+        document.getElementById("scheduleForm").reset();
+        updateScheduleFields();
+
+        await refreshSchedulerStatus();
+
+    } catch (error) {
+        message.textContent =
+            `Unable to create schedule: ${error.message}`;
+
+    } finally {
+        button.disabled = false;
+        button.textContent = "Create Schedule";
+    }
+}
+
+// --------------------------------------------------
+// CANCEL SCHEDULE
+// --------------------------------------------------
+
+async function cancelScheduledJob(jobId, button) {
+    if (!jobId) {
+        alert("This scheduled job does not have a valid job ID.");
+        return;
+    }
+
+    const confirmed = confirm(
+        `Are you sure you want to cancel scheduled job "${jobId}"?`
+    );
+
+    if (!confirmed) return;
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Cancelling...";
+    }
+
+    try {
+        const result = await apiRequest(
+            `/scheduler/jobs/${encodeURIComponent(jobId)}`,
+            "DELETE"
+        );
+
+        const message = document.getElementById("scheduleMessage");
+
+        if (message) {
+            message.textContent =
+                result.message || "Schedule cancelled successfully.";
+        }
+
+        await refreshSchedulerStatus();
+
+    } catch (error) {
+        const message = document.getElementById("scheduleMessage");
+
+        if (message) {
+            message.textContent =
+                `Unable to cancel schedule: ${error.message}`;
+        }
+
+        if (button) {
+            button.disabled = false;
+            button.textContent = "Cancel schedule";
+        }
     }
 }
 
@@ -1649,6 +1780,14 @@ document.addEventListener("DOMContentLoaded", () => {
         .addEventListener("click", loadScheduledJobs);
 
     document
+        .getElementById("scheduleType")
+        .addEventListener("change", updateScheduleFields);
+
+    document
+        .getElementById("scheduleForm")
+        .addEventListener("submit", createScheduledWorkflow);
+
+    document
         .getElementById("refreshDynamicWorkflowsBtn")
         .addEventListener("click", loadDynamicWorkflows);
 
@@ -1676,6 +1815,7 @@ document.addEventListener("DOMContentLoaded", () => {
         .getElementById("closeExecutionDetailsBtn")
         .addEventListener("click", closeExecutionDetails);
 
+    updateScheduleFields();
     setupNavigation();
 
     checkBackendConnection();
