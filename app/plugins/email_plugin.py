@@ -1,8 +1,9 @@
 
 import os
-import smtplib
+import json
+import urllib.request
+import urllib.error
 from typing import Any
-from email.message import EmailMessage
 from email.utils import parseaddr
 
 from app.plugins.base_plugin import BasePlugin
@@ -10,8 +11,10 @@ from app.plugins.base_plugin import BasePlugin
 
 class EmailPlugin(BasePlugin):
     """
-    Sends real email notifications using Gmail SMTP.
+    Sends real transactional emails using Brevo HTTPS API.
     """
+
+    API_URL = "https://api.brevo.com/v3/smtp/email"
 
     def __init__(self):
         super().__init__("email")
@@ -21,9 +24,13 @@ class EmailPlugin(BasePlugin):
         subject = str(data.get("subject") or "").strip()
         message = str(data.get("message") or "").strip()
 
-        # Validate required parameters
         if not recipient:
             raise ValueError("Email recipient is required.")
+
+        _, parsed_email = parseaddr(recipient)
+
+        if not parsed_email or "@" not in parsed_email:
+            raise ValueError("Please provide a valid recipient email address.")
 
         if not subject:
             raise ValueError("Email subject is required.")
@@ -31,53 +38,61 @@ class EmailPlugin(BasePlugin):
         if not message:
             raise ValueError("Email message is required.")
 
-        # Basic recipient email validation
-        parsed_name, parsed_email = parseaddr(recipient)
-
-        if not parsed_email or "@" not in parsed_email:
-            raise ValueError("Please provide a valid recipient email address.")
-
-        # Read Gmail SMTP configuration
-        smtp_host = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-        smtp_port = int(os.getenv("EMAIL_PORT", "587"))
+        api_key = os.getenv("BREVO_API_KEY", "").strip()
         sender = os.getenv("EMAIL_SENDER", "").strip()
-        password = os.getenv("EMAIL_PASSWORD", "").replace(" ", "")
+
+        if not api_key:
+            raise RuntimeError("BREVO_API_KEY is not configured.")
 
         if not sender:
             raise RuntimeError("EMAIL_SENDER is not configured.")
 
-        if not password:
-            raise RuntimeError("EMAIL_PASSWORD is not configured.")
+        payload = {
+            "sender": {
+                "name": "AgentFlow",
+                "email": sender
+            },
+            "to": [
+                {
+                    "email": parsed_email
+                }
+            ],
+            "subject": subject,
+            "textContent": message
+        }
 
-        # Create email
-        email = EmailMessage()
-        email["From"] = sender
-        email["To"] = recipient
-        email["Subject"] = subject
-        email.set_content(message)
+        request = urllib.request.Request(
+            self.API_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "accept": "application/json",
+                "api-key": api_key,
+                "content-type": "application/json"
+            },
+            method="POST"
+        )
 
-        # Send real email through Gmail SMTP
         try:
-            with smtplib.SMTP(
-                smtp_host,
-                smtp_port,
-                timeout=30
-            ) as smtp:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                smtp.login(sender, password)
-                smtp.send_message(email)
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read().decode("utf-8"))
 
-        except (smtplib.SMTPException, OSError) as exc:
+        except urllib.error.HTTPError as error:
+            error_body = error.read().decode("utf-8", errors="replace")
             raise RuntimeError(
-                f"Email delivery failed: {exc}"
-            ) from exc
+                f"Brevo email delivery failed (HTTP {error.code}): "
+                f"{error_body[:500]}"
+            ) from error
+
+        except urllib.error.URLError as error:
+            raise RuntimeError(
+                f"Could not connect to Brevo API: {error.reason}"
+            ) from error
 
         return {
             "success": True,
             "plugin": self.name,
-            "recipient": recipient,
+            "recipient": parsed_email,
             "subject": subject,
-            "message": "Email sent successfully through Gmail SMTP."
+            "message": "Email accepted by Brevo for delivery.",
+            "message_id": result.get("messageId")
         }
