@@ -39,7 +39,26 @@ def extract_parameters(
     instruction = user_instruction.strip()
     parameters: dict[str, Any] = {}
 
-    if workflow_id == "WF004":
+    if workflow_id == "WF002":
+        title_match = re.search(
+            r"^\s*Title\s*:\s*(.+?)\s*$",
+            instruction,
+            re.IGNORECASE | re.MULTILINE,
+        )
+
+        description_match = re.search(
+            r"^\s*Description\s*:\s*(.*?)(?=^\s*Project\s*:|\Z)",
+            instruction,
+            re.IGNORECASE | re.MULTILINE | re.DOTALL,
+        )
+
+        if title_match:
+            parameters["title"] = title_match.group(1).strip()
+
+        if description_match:
+            parameters["description"] = description_match.group(1).strip()
+
+    elif workflow_id == "WF004":
         zones = get_available_zones()
 
         matched_zone = next(
@@ -108,7 +127,20 @@ def validate_parameters(
 ) -> dict[str, Any]:
     """Validate extracted parameters before workflow execution."""
 
-    if workflow_id == "WF004":
+    if workflow_id == "WF002":
+        title = parameters.get("title")
+        description = parameters.get("description")
+
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError("Jira ticket title is required.")
+
+        if not isinstance(description, str) or not description.strip():
+            raise ValueError("Jira ticket description is required.")
+
+        parameters["title"] = title.strip()
+        parameters["description"] = description.strip()
+
+    elif workflow_id == "WF004":
         if "zone" in parameters:
             available_zones = get_available_zones()
 

@@ -23,7 +23,7 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 ALLOWED_PARAMETERS = {
     "WF001": [],
-    "WF002": [],
+    "WF002": ["title", "description"],
     "WF003": ["recipient", "subject", "message"],
     "WF004": ["zone", "hours"],
 }
@@ -71,9 +71,19 @@ Available zones:
 Extract the workflow ID and relevant parameters.
 
 Parameter rules:
+
 WF001: no parameters.
-WF002: no parameters.
+
+WF002:
+- Extract the exact Jira ticket title as "title".
+- Extract the complete Jira ticket description as "description".
+- Preserve the user's wording.
+- Do not replace the title or description with generic text.
+- Do not invent missing values.
+- Project is configured separately and does not need extraction.
+
 WF003: recipient, subject, message.
+
 WF004: zone, hours.
 
 For WF004:
