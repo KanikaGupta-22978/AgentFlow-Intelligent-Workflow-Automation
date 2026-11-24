@@ -61,4 +61,6 @@ class JiraTicket(Base):
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(50), default="Open")
+    jira_issue_key = Column(String(50), nullable=True, index=True)
+    jira_issue_url = Column(String(500), nullable=True)
     created_at = Column(DateTime, server_default=func.now())

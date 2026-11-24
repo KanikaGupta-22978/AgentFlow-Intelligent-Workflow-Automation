@@ -1,6 +1,13 @@
 
+from pathlib import Path
+from dotenv import load_dotenv
+
 from app.database.connection import SessionLocal
 from app.plugins.jira_plugin import JiraPlugin
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def main():
@@ -16,13 +23,16 @@ def main():
 
         result = jira.execute(ticket_data)
 
-        print("===== JIRA PLUGIN TEST =====")
-        print("SUCCESS:", result["success"])
-        print("PLUGIN:", result["plugin"])
-        print("TICKET ID:", result["ticket_id"])
-        print("TITLE:", result["title"])
-        print("STATUS:", result["status"])
-        print("MESSAGE:", result["message"])
+        print("\n===== JIRA PLUGIN TEST =====")
+        print("SUCCESS:", result.get("success"))
+        print("PLUGIN:", result.get("plugin"))
+        print("MESSAGE:", result.get("message"))
+
+        if result.get("success"):
+            print("LOCAL TICKET ID:", result.get("ticket_id"))
+            print("JIRA ISSUE KEY:", result.get("jira_issue_key"))
+            print("JIRA ISSUE URL:", result.get("jira_issue_url"))
+            print("STATUS:", result.get("status"))
 
     finally:
         db.close()
