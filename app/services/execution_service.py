@@ -69,9 +69,10 @@ def execute_performance_report(input_data: dict):
     zone = input_data.get("zone")
     requested_hours = input_data.get("hours")
 
-    # Filter by zone
+    # Filter records by zone.
     if zone:
         requested_zone = zone.strip().casefold()
+
         records = [
             record
             for record in records
@@ -87,7 +88,9 @@ def execute_performance_report(input_data: dict):
     filtered_end = report_end
     time_filter_applied = False
 
-    # Filter records using their timestamps
+    time_filter_note = "No time-based filtering was requested."
+
+    # Filter records using timestamps.
     if requested_hours:
         if not report_end:
             raise ValueError(
@@ -101,11 +104,13 @@ def execute_performance_report(input_data: dict):
         filtered_end = end_time.isoformat()
 
         timestamped_records = []
+        undated_records = []
 
         for record in records:
             timestamp = record.get("timestamp")
 
             if not timestamp:
+                undated_records.append(record)
                 continue
 
             record_time = datetime.fromisoformat(timestamp)
@@ -113,11 +118,26 @@ def execute_performance_report(input_data: dict):
             if start_time <= record_time <= end_time:
                 timestamped_records.append(record)
 
-        records = timestamped_records
-        time_filter_applied = True
+        # Keep records with no timestamp rather than silently
+        # discarding them. Dated records must still match the period.
+        records = timestamped_records + undated_records
 
-    # Identify all DOWN links in the filtered records.
-    # In the current dataset, zero uptime identifies a DOWN link.
+        if undated_records:
+            time_filter_applied = False
+            time_filter_note = (
+                "Partial time filtering: dated records were filtered "
+                "by the requested period. Records without timestamps "
+                "were retained because their reporting period "
+                "cannot be verified."
+            )
+        else:
+            time_filter_applied = True
+            time_filter_note = (
+                "All records filtered by zone and timestamp."
+            )
+
+    # Identify all DOWN links.
+    # Zero uptime identifies a DOWN link in the current dataset.
     down_links = [
         {
             "site_code": record.get("site_code"),
@@ -142,7 +162,20 @@ def execute_performance_report(input_data: dict):
         and float(record.get("uptime")) == 0
     ]
 
-    # Return a consistent report even when no records match.
+    # Calculate average performance score.
+    performance_scores = [
+        float(record["performance_score"])
+        for record in records
+        if record.get("performance_score") is not None
+    ]
+
+    average_score = (
+        sum(performance_scores) / len(performance_scores)
+        if performance_scores
+        else None
+    )
+
+    # Return the report.
     if not records:
         return {
             "workflow_id": "WF004",
@@ -158,25 +191,13 @@ def execute_performance_report(input_data: dict):
             },
             "requested_hours": requested_hours,
             "time_filter_applied": time_filter_applied,
+            "time_filter_note": time_filter_note,
             "message": (
                 "No performance records found for the requested "
                 "zone and time period."
             ),
             "records": [],
         }
-
-    # Calculate average performance score
-    performance_scores = [
-        record["performance_score"]
-        for record in records
-        if record.get("performance_score") is not None
-    ]
-
-    average_score = (
-        sum(performance_scores) / len(performance_scores)
-        if performance_scores
-        else None
-    )
 
     return {
         "workflow_id": "WF004",
@@ -196,11 +217,7 @@ def execute_performance_report(input_data: dict):
         },
         "requested_hours": requested_hours,
         "time_filter_applied": time_filter_applied,
-        "time_filter_note": (
-            "Records filtered by zone and timestamp."
-            if time_filter_applied
-            else "No time-based filtering was requested."
-        ),
+        "time_filter_note": time_filter_note,
         "records": records,
     }
 
