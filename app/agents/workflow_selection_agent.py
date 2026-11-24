@@ -50,7 +50,6 @@ def extract_parameters(
             None,
         )
 
-        # Detect an explicitly requested zone, including unknown zones.
         zone_match = re.search(
             r"\bfor\s+(.+?)(?=\s+for\s+the\s+last\b|\s+last\b|$)",
             instruction,
@@ -129,25 +128,34 @@ def validate_parameters(
 
             parameters["zone"] = matched_zone
 
-        if "hours" in parameters and parameters["hours"] <= 0:
-            raise ValueError(
-                "The number of hours must be greater than zero."
-            )
+        if "hours" in parameters:
+            if float(parameters["hours"]) <= 0:
+                raise ValueError(
+                    "The number of hours must be greater than zero."
+                )
 
     elif workflow_id == "WF003":
         recipient = parameters.get("recipient")
+        subject = parameters.get("subject")
         message = parameters.get("message")
 
         if not recipient:
             raise ValueError("Email recipient is required.")
 
-        if not re.fullmatch(
+        if not isinstance(recipient, str) or not re.fullmatch(
             r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
-            recipient,
+            recipient.strip(),
         ):
             raise ValueError("Invalid email address.")
 
-        if not message or not message.strip():
+        if not subject or not isinstance(subject, str) or not subject.strip():
+            raise ValueError("Email subject is required.")
+
+        if not message or not isinstance(message, str) or not message.strip():
             raise ValueError("Email message is required.")
+
+        parameters["recipient"] = recipient.strip()
+        parameters["subject"] = subject.strip()
+        parameters["message"] = message.strip()
 
     return parameters
