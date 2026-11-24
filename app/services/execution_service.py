@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
 
+from datetime import datetime, timedelta
 
 from app.services.data_service import (
     load_alerts,
@@ -60,9 +60,8 @@ def execute_email_notification(plugin_data: dict):
     }
 
 
-
 def execute_performance_report(input_data: dict):
-    """Generate a performance report with zone and time filtering."""
+    """Generate a performance report with zone, time and DOWN-link details."""
 
     records = load_performance_stats()
     metadata = load_performance_metadata()
@@ -74,7 +73,8 @@ def execute_performance_report(input_data: dict):
     if zone:
         requested_zone = zone.strip().casefold()
         records = [
-            record for record in records
+            record
+            for record in records
             if (record.get("site_zone") or "").strip().casefold()
             == requested_zone
         ]
@@ -116,6 +116,33 @@ def execute_performance_report(input_data: dict):
         records = timestamped_records
         time_filter_applied = True
 
+    # Identify all DOWN links in the filtered records.
+    # In the current dataset, zero uptime identifies a DOWN link.
+    down_links = [
+        {
+            "site_code": record.get("site_code"),
+            "link": record.get("link"),
+            "zone": record.get("site_zone"),
+            "ip_address": record.get("IP"),
+            "isp": record.get("isp"),
+            "link_type": record.get("link_type"),
+            "link_speed_mbps": record.get("link_speed (Mbps)"),
+            "uptime": record.get("uptime"),
+            "performance_score": record.get("performance_score"),
+            "avg_latency": record.get("avg_latency"),
+            "avg_packet_drop": record.get("avg_packet_drop"),
+            "avg_jitter": record.get("avg_jitter"),
+            "avg_cpu": record.get("avg_cpu"),
+            "avg_memory": record.get("avg_memory"),
+            "circuit_id": record.get("circuit_id"),
+            "site_address": record.get("site_address"),
+        }
+        for record in records
+        if record.get("uptime") is not None
+        and float(record.get("uptime")) == 0
+    ]
+
+    # Return a consistent report even when no records match.
     if not records:
         return {
             "workflow_id": "WF004",
@@ -123,16 +150,22 @@ def execute_performance_report(input_data: dict):
             "zone": zone or "All zones",
             "total_records": 0,
             "average_performance_score": None,
+            "down_link_count": 0,
+            "down_links": [],
             "reporting_period": {
                 "start": filtered_start,
                 "end": filtered_end,
             },
             "requested_hours": requested_hours,
             "time_filter_applied": time_filter_applied,
-            "message": "No performance records found for the requested zone and time period.",
+            "message": (
+                "No performance records found for the requested "
+                "zone and time period."
+            ),
             "records": [],
         }
 
+    # Calculate average performance score
     performance_scores = [
         record["performance_score"]
         for record in records
@@ -141,7 +174,8 @@ def execute_performance_report(input_data: dict):
 
     average_score = (
         sum(performance_scores) / len(performance_scores)
-        if performance_scores else None
+        if performance_scores
+        else None
     )
 
     return {
@@ -151,8 +185,11 @@ def execute_performance_report(input_data: dict):
         "total_records": len(records),
         "average_performance_score": (
             round(average_score, 2)
-            if average_score is not None else None
+            if average_score is not None
+            else None
         ),
+        "down_link_count": len(down_links),
+        "down_links": down_links,
         "reporting_period": {
             "start": filtered_start,
             "end": filtered_end,

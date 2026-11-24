@@ -125,9 +125,16 @@ def validate_parameters(
     workflow_id: str,
     parameters: dict[str, Any],
 ) -> dict[str, Any]:
-    """Validate extracted parameters before workflow execution."""
+    """Validate mandatory and optional workflow parameters."""
 
-    if workflow_id == "WF002":
+    if not isinstance(parameters, dict):
+        raise ValueError("Workflow parameters must be a dictionary.")
+
+    if workflow_id == "WF001":
+        # Alert data is loaded automatically by the execution service.
+        return {}
+
+    elif workflow_id == "WF002":
         title = parameters.get("title")
         description = parameters.get("description")
 
@@ -140,54 +147,78 @@ def validate_parameters(
         parameters["title"] = title.strip()
         parameters["description"] = description.strip()
 
+    elif workflow_id == "WF003":
+        recipient = parameters.get("recipient")
+        subject = parameters.get("subject")
+        message = parameters.get("message")
+
+        if not isinstance(recipient, str) or not recipient.strip():
+            raise ValueError("Email recipient is required.")
+
+        if not re.fullmatch(
+            r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
+            recipient.strip(),
+        ):
+            raise ValueError("Invalid email address.")
+
+        if not isinstance(subject, str) or not subject.strip():
+            raise ValueError("Email subject is required.")
+
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("Email message is required.")
+
+        parameters["recipient"] = recipient.strip()
+        parameters["subject"] = subject.strip()
+        parameters["message"] = message.strip()
+
     elif workflow_id == "WF004":
+        # Both parameters are optional, but must be valid if provided.
         if "zone" in parameters:
+            zone = parameters["zone"]
+
+            if not isinstance(zone, str) or not zone.strip():
+                raise ValueError("Zone must be a non-empty string.")
+
             available_zones = get_available_zones()
 
             matched_zone = next(
                 (
-                    zone for zone in available_zones
-                    if zone.casefold() == parameters["zone"].casefold()
+                    available_zone
+                    for available_zone in available_zones
+                    if available_zone.casefold() == zone.strip().casefold()
                 ),
                 None,
             )
 
             if not matched_zone:
                 raise ValueError(
-                    f"Zone '{parameters['zone']}' not found. "
+                    f"Zone '{zone}' not found. "
                     f"Available zones: {', '.join(available_zones)}"
                 )
 
             parameters["zone"] = matched_zone
 
         if "hours" in parameters:
-            if float(parameters["hours"]) <= 0:
+            hours = parameters["hours"]
+
+            if isinstance(hours, bool):
+                raise ValueError("Hours must be a positive number.")
+
+            try:
+                hours = float(hours)
+            except (TypeError, ValueError):
+                raise ValueError("Hours must be a valid number.")
+
+            if hours <= 0:
                 raise ValueError(
                     "The number of hours must be greater than zero."
                 )
 
-    elif workflow_id == "WF003":
-        recipient = parameters.get("recipient")
-        subject = parameters.get("subject")
-        message = parameters.get("message")
+            parameters["hours"] = hours
 
-        if not recipient:
-            raise ValueError("Email recipient is required.")
-
-        if not isinstance(recipient, str) or not re.fullmatch(
-            r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
-            recipient.strip(),
-        ):
-            raise ValueError("Invalid email address.")
-
-        if not subject or not isinstance(subject, str) or not subject.strip():
-            raise ValueError("Email subject is required.")
-
-        if not message or not isinstance(message, str) or not message.strip():
-            raise ValueError("Email message is required.")
-
-        parameters["recipient"] = recipient.strip()
-        parameters["subject"] = subject.strip()
-        parameters["message"] = message.strip()
+    else:
+        raise ValueError(
+            f"Unsupported workflow ID: {workflow_id}"
+        )
 
     return parameters
