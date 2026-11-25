@@ -16,13 +16,19 @@ def select_workflow(user_instruction: str) -> str:
     if any(word in instruction for word in ["ticket", "jira"]):
         return "WF002"
 
-    if any(word in instruction for word in ["email", "notification", "send mail"]):
+    if any(
+        word in instruction
+        for word in ["email", "notification", "send mail", "e-mail"]
+    ):
         return "WF003"
 
     if any(word in instruction for word in ["alert", "alerts"]):
         return "WF001"
 
-    if any(word in instruction for word in ["performance", "report"]):
+    if any(
+        word in instruction
+        for word in ["performance", "report"]
+    ):
         return "WF004"
 
     raise ValueError(
@@ -40,6 +46,7 @@ def extract_parameters(
     parameters: dict[str, Any] = {}
 
     if workflow_id == "WF002":
+
         title_match = re.search(
             r"^\s*Title\s*:\s*(.+?)\s*$",
             instruction,
@@ -56,9 +63,39 @@ def extract_parameters(
             parameters["title"] = title_match.group(1).strip()
 
         if description_match:
-            parameters["description"] = description_match.group(1).strip()
+            parameters["description"] = (
+                description_match.group(1).strip()
+            )
+
+        if not parameters.get("title"):
+            natural_match = re.search(
+                r"\b(?:create|raise|open)\s+"
+                r"(?:a\s+)?(?:jira\s+)?ticket\s+"
+                r"(?:for|about|regarding)\s+(.+)",
+                instruction,
+                re.IGNORECASE,
+            )
+
+            if natural_match:
+                description = natural_match.group(1).strip()
+                description = re.sub(
+                    r"\s+and\s+(?:email|e-mail)\b.*$",
+                    "",
+                    description,
+                    flags=re.IGNORECASE,
+                ).strip(" .")
+
+                parameters["description"] = description
+                parameters["title"] = " ".join(
+                    description.split()[:5]
+                )
+
+        if not parameters.get("description"):
+            if parameters.get("title"):
+                parameters["description"] = parameters["title"]
 
     elif workflow_id == "WF004":
+
         zones = get_available_zones()
 
         matched_zone = next(
@@ -69,29 +106,20 @@ def extract_parameters(
             None,
         )
 
-        zone_match = re.search(
-            r"\bfor\s+(.+?)(?=\s+for\s+the\s+last\b|\s+last\b|$)",
-            instruction,
-            re.IGNORECASE,
-        )
-
         if matched_zone:
             parameters["zone"] = matched_zone
-        elif zone_match:
-            requested_zone = zone_match.group(1).strip()
-            if requested_zone:
-                parameters["zone"] = requested_zone
 
         duration_match = re.search(
-            r"last\s+(\d+)\s+hours?",
+            r"\blast\s+(\d+(?:\.\d+)?)\s+hours?\b",
             instruction,
             re.IGNORECASE,
         )
 
         if duration_match:
-            parameters["hours"] = int(duration_match.group(1))
+            parameters["hours"] = float(duration_match.group(1))
 
     elif workflow_id == "WF003":
+
         email_match = re.search(
             r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
             instruction,
@@ -101,7 +129,7 @@ def extract_parameters(
             parameters["recipient"] = email_match.group(0)
 
         subject_match = re.search(
-            r"subject\s*:\s*(.+?)(?=\s+message\s*:|$)",
+            r"\bsubject\s*:\s*(.+?)(?=\s+message\s*:|$)",
             instruction,
             re.IGNORECASE,
         )
@@ -110,13 +138,28 @@ def extract_parameters(
             parameters["subject"] = subject_match.group(1).strip()
 
         message_match = re.search(
-            r"message\s*:\s*(.+)$",
+            r"\bmessage\s*:\s*(.+)$",
             instruction,
             re.IGNORECASE,
         )
 
         if message_match:
             parameters["message"] = message_match.group(1).strip()
+
+        if not parameters.get("subject"):
+            if re.search(
+                r"\b(performance|report)\b",
+                instruction,
+                re.IGNORECASE,
+            ):
+                parameters["subject"] = "Performance Summary Report"
+            else:
+                parameters["subject"] = "Operational Notification"
+
+        if not parameters.get("message"):
+            parameters["message"] = (
+                "Please find the requested notification details."
+            )
 
     return parameters
 
@@ -128,13 +171,15 @@ def validate_parameters(
     """Validate mandatory and optional workflow parameters."""
 
     if not isinstance(parameters, dict):
-        raise ValueError("Workflow parameters must be a dictionary.")
+        raise ValueError(
+            "Workflow parameters must be a dictionary."
+        )
 
     if workflow_id == "WF001":
-        # Alert data is loaded automatically by the execution service.
         return {}
 
     elif workflow_id == "WF002":
+
         title = parameters.get("title")
         description = parameters.get("description")
 
@@ -148,6 +193,7 @@ def validate_parameters(
         parameters["description"] = description.strip()
 
     elif workflow_id == "WF003":
+
         recipient = parameters.get("recipient")
         subject = parameters.get("subject")
         message = parameters.get("message")
@@ -172,20 +218,27 @@ def validate_parameters(
         parameters["message"] = message.strip()
 
     elif workflow_id == "WF004":
-        # Both parameters are optional, but must be valid if provided.
-        if "zone" in parameters:
-            zone = parameters["zone"]
 
-            if not isinstance(zone, str) or not zone.strip():
-                raise ValueError("Zone must be a non-empty string.")
+        # An omitted or blank zone means All zones.
+        zone = parameters.get("zone")
 
+        if zone is None or (
+            isinstance(zone, str) and not zone.strip()
+        ):
+            parameters.pop("zone", None)
+
+        elif not isinstance(zone, str):
+            raise ValueError("Zone must be a valid string.")
+
+        else:
             available_zones = get_available_zones()
 
             matched_zone = next(
                 (
                     available_zone
                     for available_zone in available_zones
-                    if available_zone.casefold() == zone.strip().casefold()
+                    if available_zone.casefold()
+                    == zone.strip().casefold()
                 ),
                 None,
             )
@@ -199,15 +252,20 @@ def validate_parameters(
             parameters["zone"] = matched_zone
 
         if "hours" in parameters:
+
             hours = parameters["hours"]
 
             if isinstance(hours, bool):
-                raise ValueError("Hours must be a positive number.")
+                raise ValueError(
+                    "Hours must be a positive number."
+                )
 
             try:
                 hours = float(hours)
             except (TypeError, ValueError):
-                raise ValueError("Hours must be a valid number.")
+                raise ValueError(
+                    "Hours must be a valid number."
+                )
 
             if hours <= 0:
                 raise ValueError(

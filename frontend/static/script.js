@@ -298,7 +298,16 @@ function formatDate(value) {
         return value;
     }
 
-    return date.toLocaleString();
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true
+    }).format(date) + " IST";
 }
 
 // --------------------------------------------------
@@ -474,11 +483,6 @@ async function loadExecutionHistory() {
         console.error("Execution history error:", error);
     }
 }
-
-// --------------------------------------------------
-// EXECUTION DETAILS
-// --------------------------------------------------
-
 function createDetailItem(label, value) {
     const item = document.createElement("div");
     item.className = "detail-item";
@@ -491,7 +495,6 @@ function createDetailItem(label, value) {
     content.textContent = value ?? "-";
 
     item.append(heading, content);
-
     return item;
 }
 
@@ -502,7 +505,6 @@ function showExecutionDetails(data) {
 
     panel.hidden = false;
     subtitle.textContent = `Execution #${data.execution_id}`;
-
     content.innerHTML = "";
 
     const overview = document.createElement("div");
@@ -610,7 +612,9 @@ function renderExecutionChart() {
 
         if (Number.isNaN(date.getTime())) return;
 
-        const label = date.toLocaleDateString();
+        const label = date.toLocaleDateString("en-IN", {
+            timeZone: "Asia/Kolkata"
+        });
 
         if (!grouped[label]) {
             grouped[label] = {
@@ -863,6 +867,11 @@ async function executeNaturalLanguage() {
         button.textContent = "✳ Execute workflow";
     }
 }
+
+// --------------------------------------------------
+// WORKFLOW INPUT MODAL
+// --------------------------------------------------
+
 function createWorkflowModal(workflowId) {
     const existing = document.getElementById("workflowModal");
 
@@ -1071,7 +1080,6 @@ function createWorkflowModal(workflowId) {
 
     return modal;
 }
-
 // --------------------------------------------------
 // PREDEFINED WORKFLOW EXECUTION
 // --------------------------------------------------
@@ -1294,9 +1302,48 @@ async function executeDynamicWorkflow(workflowId, button) {
         }
     }
 }
+
 // --------------------------------------------------
 // SCHEDULER DISPLAY
 // --------------------------------------------------
+
+function parseCronTrigger(trigger) {
+    const match = String(trigger || "").match(/^cron\[(.*)\]$/i);
+
+    if (!match) {
+        return {};
+    }
+
+    const values = {};
+    const pattern = /([a-z_]+)='([^']*)'/gi;
+    let item;
+
+    while ((item = pattern.exec(match[1])) !== null) {
+        values[item[1].toLowerCase()] = item[2];
+    }
+
+    return values;
+}
+
+function formatClockTime(hour, minute) {
+    if (hour === undefined || minute === undefined) {
+        return "";
+    }
+
+    const date = new Date();
+    date.setHours(Number(hour), Number(minute), 0, 0);
+
+    if (Number.isNaN(date.getTime())) {
+        return "";
+    }
+
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+    }).format(date);
+}
 
 function formatSchedule(job) {
     const type = String(job.schedule_type || "").toLowerCase();
@@ -1326,10 +1373,48 @@ function formatSchedule(job) {
         return trigger || "Interval schedule";
     }
 
-    if (type === "daily") return "Daily at 9:00 AM";
-    if (type === "weekly") return "Weekly · Monday at 10:00 AM";
-    if (type === "monthly") return "Monthly · 1st day at 9:00 AM";
-    if (type === "one_time") return "One-time execution";
+    if (type === "one_time") {
+        return job.next_run_time
+            ? `One-time · ${formatDate(job.next_run_time)}`
+            : "One-time execution";
+    }
+
+    const cron = parseCronTrigger(trigger);
+    const time = formatClockTime(cron.hour, cron.minute);
+
+    if (type === "daily") {
+        return time ? `Daily at ${time} IST` : "Daily schedule";
+    }
+
+    if (type === "weekly") {
+        const days = {
+            mon: "Monday",
+            tue: "Tuesday",
+            wed: "Wednesday",
+            thu: "Thursday",
+            fri: "Friday",
+            sat: "Saturday",
+            sun: "Sunday"
+        };
+
+        const dayValue = (cron.day_of_week || "").split(",")[0].toLowerCase();
+        const dayLabel = days[dayValue] || dayValue || "configured weekday";
+
+        return time
+            ? `Weekly · ${dayLabel} at ${time} IST`
+            : `Weekly · ${dayLabel}`;
+    }
+
+    if (type === "monthly") {
+        const day = Number(cron.day);
+        const suffix = day % 100 >= 11 && day % 100 <= 13
+            ? "th"
+            : ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] || "th");
+
+        return time
+            ? `Monthly · ${day}${suffix} day at ${time} IST`
+            : `Monthly · ${day}${suffix} day`;
+    }
 
     return trigger || type || "Schedule not specified";
 }
@@ -1432,7 +1517,6 @@ function renderScheduledJobs(data) {
 
     container.appendChild(grid);
 }
-
 // --------------------------------------------------
 // SCHEDULER API
 // --------------------------------------------------
@@ -1630,8 +1714,10 @@ async function createScheduledWorkflow(event) {
 
         const selectedDate = new Date(dateTime);
 
-        if (Number.isNaN(selectedDate.getTime()) ||
-            selectedDate <= new Date()) {
+        if (
+            Number.isNaN(selectedDate.getTime()) ||
+            selectedDate <= new Date()
+        ) {
             message.textContent = "Choose a future date and time.";
             return;
         }

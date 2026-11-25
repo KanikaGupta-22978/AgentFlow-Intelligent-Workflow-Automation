@@ -1,3 +1,4 @@
+
 from app.services import execution_service
 
 
@@ -22,10 +23,16 @@ def _record(zone="Shivamogga Zone", uptime=100, score=80, timestamp=None):
     }
 
 
-def _stub_data(monkeypatch, records, start="2026-11-02T04:30:00",
-               end="2026-11-02T12:30:00"):
+def _stub_data(
+    monkeypatch,
+    records,
+    start="2026-11-02T04:30:00",
+    end="2026-11-02T12:30:00",
+):
     monkeypatch.setattr(
-        execution_service, "load_performance_stats", lambda: records
+        execution_service,
+        "load_performance_stats",
+        lambda: records,
     )
     monkeypatch.setattr(
         execution_service,
@@ -58,13 +65,25 @@ def test_wf004_filters_by_zone_and_lists_zero_uptime_links(monkeypatch):
     assert result["time_filter_applied"] is False
 
 
-def test_wf004_filters_dated_records_and_retains_undated_records(monkeypatch):
+def test_wf004_excludes_undated_and_out_of_period_records(monkeypatch):
     _stub_data(
         monkeypatch,
         [
-            _record(uptime=0, score=0, timestamp="2026-11-02T06:00:00"),
-            _record(uptime=100, score=90, timestamp="2026-11-02T03:00:00"),
-            _record(uptime=0, score=0, timestamp=None),
+            _record(
+                uptime=0,
+                score=0,
+                timestamp="2026-11-02T06:00:00",
+            ),
+            _record(
+                uptime=100,
+                score=90,
+                timestamp="2026-11-02T03:00:00",
+            ),
+            _record(
+                uptime=0,
+                score=0,
+                timestamp=None,
+            ),
         ],
     )
 
@@ -72,23 +91,37 @@ def test_wf004_filters_dated_records_and_retains_undated_records(monkeypatch):
         {"zone": "Shivamogga Zone", "hours": 7}
     )
 
-    assert result["total_records"] == 2
-    assert result["down_link_count"] == 2
-    assert result["time_filter_applied"] is False
-    assert "Partial time filtering" in result["time_filter_note"]
+    assert result["total_records"] == 1
+    assert result["down_link_count"] == 1
+    assert len(result["down_links"]) == 1
+    assert result["time_filter_applied"] is True
     assert result["reporting_period"] == {
         "start": "2026-11-02T05:30:00",
         "end": "2026-11-02T12:30:00",
     }
+    assert "without timestamps" in result["time_filter_note"]
+    assert "invalid timestamps" in result["time_filter_note"]
 
 
 def test_wf004_applies_full_time_filter_when_all_records_are_dated(monkeypatch):
     _stub_data(
         monkeypatch,
         [
-            _record(uptime=0, score=0, timestamp="2026-11-02T06:00:00"),
-            _record(uptime=100, score=90, timestamp="2026-11-02T03:00:00"),
-            _record(uptime=100, score=70, timestamp="2026-11-02T10:00:00"),
+            _record(
+                uptime=0,
+                score=0,
+                timestamp="2026-11-02T06:00:00",
+            ),
+            _record(
+                uptime=100,
+                score=90,
+                timestamp="2026-11-02T03:00:00",
+            ),
+            _record(
+                uptime=100,
+                score=70,
+                timestamp="2026-11-02T10:00:00",
+            ),
         ],
     )
 
@@ -100,7 +133,9 @@ def test_wf004_applies_full_time_filter_when_all_records_are_dated(monkeypatch):
     assert result["down_link_count"] == 1
     assert result["time_filter_applied"] is True
     assert result["time_filter_note"] == (
-        "All records filtered by zone and timestamp."
+        "Report includes only records with valid timestamps between "
+        "2026-11-02T05:30:00 and 2026-11-02T12:30:00. "
+        "Records without timestamps or with invalid timestamps were excluded."
     )
     assert result["average_performance_score"] == 35
 

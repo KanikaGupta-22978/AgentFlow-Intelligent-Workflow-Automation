@@ -1,6 +1,7 @@
 
 import os
 import json
+import re
 from typing import TypedDict, Any
 
 from dotenv import load_dotenv
@@ -78,24 +79,18 @@ WF002:
 - Extract the exact Jira ticket title as "title".
 - Extract the complete Jira ticket description as "description".
 - Preserve the user's wording.
-- Do not replace the title or description with generic text.
 - Do not invent missing values.
-- Project is configured separately and does not need extraction.
 
-WF003: recipient, subject, message.
+WF003:
+- Extract recipient, subject and message.
+- Do not invent missing values.
 
-WF004: zone, hours.
-
-For WF004:
-- Select the exact zone name from the available zones.
-- If the user mentions only a partial zone name,
-  return the matching full zone name.
+WF004:
+- Extract zone and hours.
+- Select the exact zone name from available zones.
+- Match partial zone names when possible.
 - Extract the requested number of hours.
 
-For WF003:
-- Extract recipient, subject and message.
-
-Do not invent missing values.
 Do not execute workflows.
 
 Return ONLY valid JSON:
@@ -200,7 +195,6 @@ def normalize_zone_name(parameters: dict) -> dict:
         return parameters
 
     available_zones = get_available_zones()
-
     requested_zone = str(requested_zone).strip()
 
     matched_zone = next(
@@ -271,7 +265,7 @@ def parameter_extraction_node(state: AgentState) -> dict:
 
 
 def workflow_execution_node(state: AgentState) -> dict:
-    """Execute the selected workflow."""
+    """Execute the selected individual workflow."""
 
     try:
         result = execute_workflow(
@@ -291,6 +285,262 @@ def workflow_execution_node(state: AgentState) -> dict:
             "status": "failed",
             "error": str(error),
         }
+
+
+def is_compound_report_request(instruction: str) -> bool:
+    """Identify report requests that explicitly request another action."""
+
+    text = instruction.casefold()
+
+    has_report = any(
+        phrase in text
+        for phrase in ("performance report", "performance summary")
+    ) or bool(re.search(r"\breport\b", text))
+
+    has_email = bool(
+        re.search(
+            r"\b(email|e-mail|send mail|send an email|mail it)\b",
+            text,
+        )
+    )
+
+    has_jira = bool(
+        re.search(
+            r"\b(jira|ticket|create tickets?)\b",
+            text,
+        )
+    )
+
+    return has_report and (has_email or has_jira)
+
+
+def build_jira_description(report: dict) -> str:
+    """Build one Jira description containing all DOWN links."""
+
+    down_links = report.get("down_links", [])
+
+    lines = [
+        "Critical network performance incident summary.",
+        "",
+        f"Zone: {report.get('zone', 'All zones')}",
+        f"Total DOWN links: {len(down_links)}",
+        "",
+        "Affected links:",
+    ]
+
+    for index, link in enumerate(down_links, start=1):
+        lines.extend([
+            "",
+            f"{index}. Site: {link.get('site_code') or 'N/A'}",
+            f"   Link: {link.get('link') or 'N/A'}",
+            f"   Zone: {link.get('zone') or 'N/A'}",
+            f"   ISP: {link.get('isp') or 'N/A'}",
+            f"   IP address: {link.get('ip_address') or 'N/A'}",
+            f"   Circuit ID: {link.get('circuit_id') or 'N/A'}",
+            f"   Uptime: {link.get('uptime')}",
+        ])
+
+    lines.extend([
+        "",
+        "Please investigate the affected links and restore service.",
+        "Generated automatically by AgentFlow.",
+    ])
+
+    return "\n".join(lines)
+
+
+def execute_compound_report_request(
+    user_instruction: str,
+) -> dict[str, Any]:
+    """
+    Execute a performance report followed by explicitly requested
+    Jira ticket creation and/or email delivery.
+    """
+
+    text = user_instruction.casefold()
+
+    email_requested = bool(
+        re.search(
+            r"\b(email|e-mail|send mail|send an email|mail it)\b",
+            text,
+        )
+    )
+
+    jira_requested = bool(
+        re.search(
+            r"\b(jira|ticket|create tickets?)\b",
+            text,
+        )
+    )
+
+    recipient = None
+
+    if email_requested:
+        email_match = re.search(
+            r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
+            user_instruction,
+        )
+
+        if not email_match:
+            raise ValueError(
+                "Please provide an email address to receive the report."
+            )
+
+        recipient = email_match.group(0)
+
+    # Extract and validate WF004 parameters.
+    report_parameters = extract_parameters(
+        "WF004",
+        user_instruction,
+    )
+
+    report_parameters = normalize_zone_name(report_parameters)
+
+    report_parameters = validate_parameters(
+        "WF004",
+        report_parameters,
+    )
+
+    # Step 1: Generate the performance report.
+    performance_report = execute_workflow(
+        "WF004",
+        report_parameters,
+    )
+
+    action_results = {
+        "performance_report": {
+            "status": "success",
+            "result": performance_report,
+        },
+        "jira_ticket": {
+            "status": "not_requested",
+            "result": None,
+        },
+        "email_notification": {
+            "status": "not_requested",
+            "result": None,
+        },
+    }
+
+    errors = []
+
+    # Step 2: Create one Jira ticket containing all DOWN links.
+    if jira_requested:
+        down_links = performance_report.get("down_links", [])
+
+        if not down_links:
+            action_results["jira_ticket"] = {
+                "status": "skipped",
+                "message": (
+                    "No DOWN links were found. "
+                    "No Jira ticket was created."
+                ),
+                "result": None,
+            }
+        else:
+            jira_parameters = {
+                "title": (
+                    f"Network DOWN Link Incident - "
+                    f"{performance_report.get('zone', 'All zones')} "
+                    f"({len(down_links)} affected links)"
+                ),
+                "description": build_jira_description(
+                    performance_report
+                ),
+            }
+
+            try:
+                jira_result = execute_workflow(
+                    "WF002",
+                    jira_parameters,
+                )
+
+                action_results["jira_ticket"] = {
+                    "status": "success",
+                    "result": jira_result,
+                }
+
+            except Exception as error:
+                errors.append(f"Jira: {str(error)}")
+
+                action_results["jira_ticket"] = {
+                    "status": "failed",
+                    "error": str(error),
+                }
+
+    # Step 3: Email the complete performance report.
+    if email_requested:
+        email_parameters = {
+            "recipient": recipient,
+            "subject": (
+                f"Performance Summary Report - "
+                f"{performance_report.get('zone', 'All zones')}"
+            ),
+            "message": "Please find the complete performance report below.",
+            "report_data": performance_report,
+        }
+
+        try:
+            email_result = execute_workflow(
+                "WF003",
+                email_parameters,
+            )
+
+            action_results["email_notification"] = {
+                "status": "success",
+                "result": email_result,
+            }
+
+        except Exception as error:
+            errors.append(f"Email: {str(error)}")
+
+            action_results["email_notification"] = {
+                "status": "failed",
+                "error": str(error),
+            }
+
+    # Preserve useful top-level fields for the existing API/reporting code.
+    email_result = action_results["email_notification"].get("result")
+    jira_result = action_results["jira_ticket"].get("result")
+
+    result = {
+        **performance_report,
+        "workflow_id": "WF004+COMPOUND",
+        "workflow_name": "Performance Report and Follow-up Actions",
+        "performance_report": performance_report,
+        "jira_result": jira_result,
+        "email_result": email_result,
+        "plugin_result": (
+            email_result.get("plugin_result")
+            if isinstance(email_result, dict)
+            else None
+        ),
+        "action_results": action_results,
+    }
+
+    failed_actions = [
+        action
+        for action in ("jira_ticket", "email_notification")
+        if action_results[action]["status"] == "failed"
+    ]
+
+    if failed_actions:
+        status = "partial_success"
+    else:
+        status = "success"
+
+    return {
+        "workflow_id": "WF004+COMPOUND",
+        "parameters": {
+            **report_parameters,
+            "recipient": recipient,
+        },
+        "execution_result": result,
+        "status": status,
+        "error": "; ".join(errors),
+        "llm_used": False,
+        "llm_warning": "",
+    }
 
 
 def route_after_selection(state: AgentState):
@@ -356,6 +606,33 @@ workflow_graph = graph_builder.compile()
 
 def run_agent(user_instruction: str) -> dict[str, Any]:
     """Understand, validate and execute a natural-language request."""
+
+    if not isinstance(user_instruction, str) or not user_instruction.strip():
+        return {
+            "workflow_id": "",
+            "parameters": {},
+            "execution_result": {},
+            "status": "failed",
+            "error": "Please provide a workflow instruction.",
+            "llm_used": False,
+            "llm_warning": "",
+        }
+
+    # Handle explicit report + email/Jira requests before single-workflow
+    # selection. Existing individual workflow requests still use the graph.
+    if is_compound_report_request(user_instruction):
+        try:
+            return execute_compound_report_request(user_instruction)
+        except Exception as error:
+            return {
+                "workflow_id": "WF004+COMPOUND",
+                "parameters": {},
+                "execution_result": {},
+                "status": "failed",
+                "error": str(error),
+                "llm_used": False,
+                "llm_warning": "",
+            }
 
     initial_state = {
         "user_instruction": user_instruction,
