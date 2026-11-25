@@ -25,10 +25,7 @@ def select_workflow(user_instruction: str) -> str:
     if any(word in instruction for word in ["alert", "alerts"]):
         return "WF001"
 
-    if any(
-        word in instruction
-        for word in ["performance", "report"]
-    ):
+    if any(word in instruction for word in ["performance", "report"]):
         return "WF004"
 
     raise ValueError(
@@ -98,19 +95,30 @@ def extract_parameters(
 
         zones = get_available_zones()
 
-        matched_zone = next(
-            (
-                zone for zone in zones
-                if zone.casefold() in instruction.casefold()
-            ),
-            None,
+        all_zones_requested = bool(
+            re.search(
+                r"\b(all|every)\s+zones?\b|\bentire\s+network\b",
+                instruction,
+                re.IGNORECASE,
+            )
         )
 
-        if matched_zone:
-            parameters["zone"] = matched_zone
+        if not all_zones_requested:
+            matched_zone = next(
+                (
+                    zone
+                    for zone in zones
+                    if zone.casefold() in instruction.casefold()
+                ),
+                None,
+            )
+
+            if matched_zone:
+                parameters["zone"] = matched_zone
 
         duration_match = re.search(
-            r"\blast\s+(\d+(?:\.\d+)?)\s+hours?\b",
+            r"\b(?:last|past|previous)\s+"
+            r"(\d+(?:\.\d+)?)\s+hours?\b",
             instruction,
             re.IGNORECASE,
         )
@@ -175,6 +183,8 @@ def validate_parameters(
             "Workflow parameters must be a dictionary."
         )
 
+    parameters = dict(parameters)
+
     if workflow_id == "WF001":
         return {}
 
@@ -219,11 +229,23 @@ def validate_parameters(
 
     elif workflow_id == "WF004":
 
-        # An omitted or blank zone means All zones.
+        # Missing, blank, or explicit All zones means no zone filter.
         zone = parameters.get("zone")
 
-        if zone is None or (
-            isinstance(zone, str) and not zone.strip()
+        if (
+            zone is None
+            or (
+                isinstance(zone, str)
+                and (
+                    not zone.strip()
+                    or zone.strip().casefold() in {
+                        "all",
+                        "all zones",
+                        "every zone",
+                        "every zones",
+                    }
+                )
+            )
         ):
             parameters.pop("zone", None)
 
@@ -251,15 +273,20 @@ def validate_parameters(
 
             parameters["zone"] = matched_zone
 
-        if "hours" in parameters:
+        # Hours are optional. Blank or null means no time filter.
+        hours = parameters.get("hours")
 
-            hours = parameters["hours"]
+        if hours is None or (
+            isinstance(hours, str) and not hours.strip()
+        ):
+            parameters.pop("hours", None)
 
-            if isinstance(hours, bool):
-                raise ValueError(
-                    "Hours must be a positive number."
-                )
+        elif isinstance(hours, bool):
+            raise ValueError(
+                "Hours must be a positive number."
+            )
 
+        else:
             try:
                 hours = float(hours)
             except (TypeError, ValueError):
