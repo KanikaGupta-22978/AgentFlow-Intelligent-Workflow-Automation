@@ -243,6 +243,25 @@ def parameter_extraction_node(state: AgentState) -> dict:
         }
 
         if workflow_id == "WF004":
+            instruction = state["user_instruction"]
+
+            # An explicit all-zones request must override any zone value
+            # hallucinated or mis-typed by the language model.
+            all_zones_requested = bool(
+                re.search(
+                    r"\\b(all|every)\\s+zones?\\b|\\bentire\\s+network\\b",
+                    instruction,
+                    re.IGNORECASE,
+                )
+            )
+
+            if all_zones_requested:
+                parameters.pop("zone", None)
+            elif existing_parameters.get("zone"):
+                # Prefer the exact zone extracted from the supplied dataset
+                # over a potentially malformed LLM value.
+                parameters["zone"] = existing_parameters["zone"]
+
             parameters = normalize_zone_name(parameters)
 
         validated_parameters = validate_parameters(
