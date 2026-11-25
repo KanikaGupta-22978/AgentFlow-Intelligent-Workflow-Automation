@@ -1,5 +1,6 @@
 
 from app.services import execution_service
+from app.agents.langgraph_agent import parameter_extraction_node
 
 
 def _record(zone="Shivamogga Zone", uptime=100, score=80, timestamp=None):
@@ -152,3 +153,23 @@ def test_wf004_returns_consistent_empty_result_for_unknown_zone(monkeypatch):
     assert result["down_links"] == []
     assert result["records"] == []
     assert result["time_filter_applied"] is True
+
+
+
+def test_wf004_all_zones_ignores_malformed_llm_zone(monkeypatch):
+    result = parameter_extraction_node(
+        {
+            "workflow_id": "WF004",
+            "user_instruction": (
+                "Generate a performance summary report for all zones "
+                "using all available records, without applying any time filter."
+            ),
+            "llm_parameters": {
+                "zone": ["unexpected", "list", "from", "llm"],
+            },
+        }
+    )
+
+    assert result["status"] == "parameters_validated"
+    assert result["parameters"] == {}
+    assert result["error"] == ""
