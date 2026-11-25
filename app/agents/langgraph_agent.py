@@ -249,7 +249,7 @@ def parameter_extraction_node(state: AgentState) -> dict:
             # hallucinated or mis-typed by the language model.
             all_zones_requested = bool(
                 re.search(
-                    r"\\b(all|every)\\s+zones?\\b|\\bentire\\s+network\\b",
+                    r"\b(all|every)\s+zones?\b|\bentire\s+network\b",
                     instruction,
                     re.IGNORECASE,
                 )
